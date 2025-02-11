@@ -1,12 +1,12 @@
 import requests
+import json
 
-url = "http://localhost:8000/chat"
-data = {
-    "query": "今天天气怎么样？"
-}
+url = "http://localhost:8000/chat"  # 假设你的 API URL
+data = {'query': '周杰伦是谁？用500字作答'}
 
-# 流式请求
-with requests.post(url, json=data, params={"stream": True}, stream=True) as response:
-    for line in response.iter_lines():
-        if line:
-            print(f"Received: {line.decode('utf-8')}")
+response = requests.post(url, json=data, stream=False)
+
+# 流式接收
+for chunk in response.iter_content(chunk_size=1024):
+    if chunk:
+        print(chunk.decode('utf-8'))

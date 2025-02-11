@@ -22,6 +22,7 @@ tensor_parallel_size=1
 gpu_memory_utilization=0.9
 quantization='gptq'
 dtype='float16'
+max_model_len=6144
 
 # vLLM模型加载
 def load_vllm():
@@ -42,6 +43,7 @@ def load_vllm():
     args.gpu_memory_utilization=gpu_memory_utilization
     args.dtype=dtype
     args.max_num_seqs=20   # batch最大20条样本
+    args.max_model_len=max_model_len
     # 加载模型
     os.environ['VLLM_USE_MODELSCOPE']='True'
     engine=AsyncLLMEngine.from_engine_args(args)
@@ -49,15 +51,15 @@ def load_vllm():
 
 generation_config,tokenizer,stop_words_ids,engine=load_vllm()
 
-@app.post("/chat")
+@app.post("/v1/chat/completions")
 async def chat(request: Request, stream: bool = False):
     try:
         request_data = await request.json()
     except json.JSONDecodeError:
         return JSONResponse({"error": "Invalid JSON"}, status_code=400)
     
-    query = request_data.get("query", None)
-    if not query:
+    query = request_data.get("prompt", None)
+    if query==None:
         return JSONResponse({"error": "Missing 'query' field"}, status_code=400)
     
     system = request_data.get('system', 'You are a helpful assistant.')
@@ -84,34 +86,20 @@ async def chat(request: Request, stream: bool = False):
 
     # 流式响应
     if stream:
-        try:
-            return StreamingResponse(stream_results(results_generator), media_type="application/json")
-        except asyncio.CancelledError:
-            return JSONResponse({"error": "Request cancelled"}, status_code=499)
+        async def stream_results():
+            async for request_output in results_generator:
+                text_outputs = request_output.outputs[0].text
+                ret = {"text": text_outputs}
+            yield (json.dumps(ret) + "\n").encode("utf-8")
+        return StreamingResponse(stream_results())
 
     # 非流式响应
     final_output = None
     async for request_output in results_generator:
         final_output = request_output
-
-    if final_output is None:
-        return JSONResponse({"error": "No response generated"}, status_code=500)
-
-    prompt = final_output.prompt or ""
-    text_outputs = [prompt + (output.text or "") for output in final_output.outputs]
-    return JSONResponse({"text": text_outputs})
-
-# 流式响应
-async def stream_results(results_generator) -> AsyncGenerator[bytes, None]:
-    try:
-        async for request_output in results_generator:
-            prompt = request_output.prompt or ""
-            text_outputs = [prompt + (output.text or "") for output in request_output.outputs]
-            ret = {"text": text_outputs}
-            yield (json.dumps(ret) + "\n").encode("utf-8")
-    except asyncio.CancelledError:
-        return
-
+    text_outputs = final_output.outputs[0].text
+    ret = {"text": text_outputs}
+    return JSONResponse(ret)
 
 if __name__ == '__main__':
     uvicorn.run(app,host=None,port=8000,log_level="debug")
