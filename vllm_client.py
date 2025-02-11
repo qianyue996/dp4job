@@ -1,12 +1,12 @@
-# -*- coding:utf-8 -*-
-import json
 import requests
 
-request_param = {
-    'query': "请你写一篇日记，内容不限，自己创作，不少于300字，记住300字",
-    'stream': False
+url = "http://localhost:8000/chat"
+data = {
+    "query": "今天天气怎么样？"
 }
 
-response = requests.post(url="http://localhost:8000/chat", json=request_param)
-
-print(response.json()['text'][0])
+# 流式请求
+with requests.post(url, json=data, params={"stream": True}, stream=True) as response:
+    for line in response.iter_lines():
+        if line:
+            print(f"Received: {line.decode('utf-8')}")

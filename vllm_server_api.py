@@ -38,7 +38,7 @@ def load_vllm():
     args.tokenizer=model_dir
     args.tensor_parallel_size=tensor_parallel_size
     args.trust_remote_code=True
-    #args.quantization=quantization
+    args.quantization=quantization
     args.gpu_memory_utilization=gpu_memory_utilization
     args.dtype=dtype
     args.max_num_seqs=20   # batch最大20条样本
@@ -49,52 +49,45 @@ def load_vllm():
 
 generation_config,tokenizer,stop_words_ids,engine=load_vllm()
 
-# chat对话接口
 @app.post("/chat")
-async def chat(request: Request):
+async def chat(request: Request, stream: bool = False):
     try:
-        request = await request.json()
+        request_data = await request.json()
     except json.JSONDecodeError:
         return JSONResponse({"error": "Invalid JSON"}, status_code=400)
-    query = request.get("query", None)
+    
+    query = request_data.get("query", None)
     if not query:
         return JSONResponse({"error": "Missing 'query' field"}, status_code=400)
-    system=request.get('system','You are a helpful assistant.')
-    history=request.get('history',[])
-    stream = request.get("stream", False)
+    
+    system = request_data.get('system', 'You are a helpful assistant.')
+    history = request_data.get('history', [])
     request_id = str(uuid.uuid4().hex)
 
     # 构造prompt
-    prompt_text,prompt_tokens=_build_prompt(generation_config,tokenizer,query,history=history,system=system)
+    prompt_text, prompt_tokens = _build_prompt(generation_config, tokenizer, query, history=history, system=system)
     inputs = {"prompt_token_ids": prompt_tokens}
 
     # vLLM请求配置
-    sampling_params=SamplingParams(stop_token_ids=stop_words_ids,
-                                    early_stopping=False,
-                                    top_p=generation_config.top_p,
-                                    top_k=-1 if generation_config.top_k == 0 else generation_config.top_k,
-                                    temperature=generation_config.temperature,
-                                    repetition_penalty=generation_config.repetition_penalty,
-                                    max_tokens=generation_config.max_new_tokens)
+    sampling_params = SamplingParams(
+        stop_token_ids=stop_words_ids,
+        early_stopping=False,
+        top_p=generation_config.top_p,
+        top_k=-1 if generation_config.top_k == 0 else generation_config.top_k,
+        temperature=generation_config.temperature,
+        repetition_penalty=generation_config.repetition_penalty,
+        max_tokens=generation_config.max_new_tokens
+    )
 
+    # 获取生成器
     results_generator = engine.generate(inputs=inputs, sampling_params=sampling_params, request_id=request_id)
 
     # 流式响应
-    async def stream_results() -> AsyncGenerator[bytes, None]:
-        try:
-            async for request_output in results_generator:
-                prompt = request_output.prompt or ""
-                text_outputs = [prompt + (output.text or "") for output in request_output.outputs]
-                ret = {"text": text_outputs}
-                yield (json.dumps(ret) + "\n").encode("utf-8")
-        except asyncio.CancelledError:
-            return
-
     if stream:
         try:
-            return StreamingResponse(stream_results())
+            return StreamingResponse(stream_results(results_generator), media_type="application/json")
         except asyncio.CancelledError:
-            return Response(status_code=499)
+            return JSONResponse({"error": "Request cancelled"}, status_code=499)
 
     # 非流式响应
     final_output = None
@@ -107,6 +100,18 @@ async def chat(request: Request):
     prompt = final_output.prompt or ""
     text_outputs = [prompt + (output.text or "") for output in final_output.outputs]
     return JSONResponse({"text": text_outputs})
+
+# 流式响应
+async def stream_results(results_generator) -> AsyncGenerator[bytes, None]:
+    try:
+        async for request_output in results_generator:
+            prompt = request_output.prompt or ""
+            text_outputs = [prompt + (output.text or "") for output in request_output.outputs]
+            ret = {"text": text_outputs}
+            yield (json.dumps(ret) + "\n").encode("utf-8")
+    except asyncio.CancelledError:
+        return
+
 
 if __name__ == '__main__':
     uvicorn.run(app,host=None,port=8000,log_level="debug")
