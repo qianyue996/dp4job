@@ -111,6 +111,7 @@ async def chat(request: Request):
                     }
                 yield json.dumps(ret)
         return StreamingResponse(stream_results(),media_type="text/even-stream")
+    
 
     # 非流式响应
     final_output = None
