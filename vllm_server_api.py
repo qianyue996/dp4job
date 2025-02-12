@@ -1,25 +1,21 @@
 import os 
-import asyncio
 import json
-from typing import AsyncGenerator
-
 from vllm import AsyncEngineArgs,AsyncLLMEngine
 from vllm.sampling_params import SamplingParams
 from modelscope import AutoTokenizer, GenerationConfig
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse, Response, StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 import uvicorn
 import uuid
-
 from prompt_utils import _build_prompt
 
 # http接口服务
 app=FastAPI()
 
 # vLLM参数
-model_dir="remote_models/Qwen-7B-Chat-Int4"
+model_dir="remote_models/Qwen-1_8B-Chat"
 tensor_parallel_size=1
-gpu_memory_utilization=0.9
+gpu_memory_utilization=0.6
 quantization='gptq'
 dtype='float16'
 max_model_len=6144
@@ -39,11 +35,11 @@ def load_vllm():
     args.tokenizer=model_dir
     args.tensor_parallel_size=tensor_parallel_size
     args.trust_remote_code=True
-    args.quantization=quantization
+    #args.quantization=quantization
     args.gpu_memory_utilization=gpu_memory_utilization
     args.dtype=dtype
     args.max_num_seqs=20   # batch最大20条样本
-    args.max_model_len=max_model_len
+    #args.max_model_len=max_model_len
     # 加载模型
     os.environ['VLLM_USE_MODELSCOPE']='True'
     engine=AsyncLLMEngine.from_engine_args(args)
@@ -52,22 +48,35 @@ def load_vllm():
 generation_config,tokenizer,stop_words_ids,engine=load_vllm()
 
 @app.post("/v1/chat/completions")
-async def chat(request: Request, stream: bool = False):
-    try:
-        request_data = await request.json()
-    except json.JSONDecodeError:
-        return JSONResponse({"error": "Invalid JSON"}, status_code=400)
-    
-    query = request_data.get("prompt", None)
-    if query==None:
-        return JSONResponse({"error": "Missing 'query' field"}, status_code=400)
-    
-    system = request_data.get('system', 'You are a helpful assistant.')
-    history = request_data.get('history', [])
+async def chat(request: Request):
+    request_data = await request.json()
+    stream = request_data.get("stream")
+    messages = request_data.get("messages", None)
+    # user发言字典列表
+    """
+    [
+    {"role": "user", "content": "What is the capital of France?"},
+    {"role": "user", "content": "What is the population of France?"}
+    ]
+    """
+    user_messages = [message for message in messages if message['role'] == 'user']
+    # assistant发言字典列表
+    """
+    [
+    {"role": "assistant", "content": "What is the capital of France?"},
+    {"role": "assistant", "content": "What is the population of France?"}
+    ]
+    """
+    assistant_messages = [message for message in messages if message['role'] == 'assistant']
+    # 取最新用户发言: Str
+    latest_user_message = user_messages[-1:][0]['content']
+    # 历史对话列表
+    history = messages[:-1]
+    system = "you are a helpful assistant" if messages[0]['role'] != "system" else ""
     request_id = str(uuid.uuid4().hex)
 
     # 构造prompt
-    prompt_text, prompt_tokens = _build_prompt(generation_config, tokenizer, query, history=history, system=system)
+    prompt_text, prompt_tokens = _build_prompt(generation_config, tokenizer, latest_user_message, history=history, system=system)
     inputs = {"prompt_token_ids": prompt_tokens}
 
     # vLLM请求配置
@@ -89,17 +98,73 @@ async def chat(request: Request, stream: bool = False):
         async def stream_results():
             async for request_output in results_generator:
                 text_outputs = request_output.outputs[0].text
-                ret = {"text": text_outputs}
-            yield (json.dumps(ret) + "\n").encode("utf-8")
-        return StreamingResponse(stream_results())
+                ret = {
+                        "model": model_dir,
+                        "choices": [
+                            {
+                                "message": {
+                                "role": "assistant",
+                                "content": text_outputs
+                                }
+                            }
+                        ]
+                    }
+                yield json.dumps(ret)
+        return StreamingResponse(stream_results(),media_type="text/even-stream")
 
     # 非流式响应
     final_output = None
     async for request_output in results_generator:
         final_output = request_output
     text_outputs = final_output.outputs[0].text
-    ret = {"text": text_outputs}
-    return JSONResponse(ret)
+    response = {
+        "model": model_dir,
+        "choices": [
+            {
+                "message": {
+                    "role": "assistant",
+                    "content": text_outputs
+                }
+            }
+        ]
+    }
+    return JSONResponse(response)
+"""
+response = {
+        "id": "chatcmpl-xyz",
+        "object": "chat.completion",
+        "created": 1613422357,
+        "model": request.model,
+        "choices": [
+            {
+                "message": {
+                    "role": "assistant",
+                    "content": assistant_reply
+                },
+                "finish_reason": "stop",
+                "index": 0
+            }
+        ]
+    }
+"""
+
+@app.get("/v1/models")
+async def get_json():
+    # 定义你想要返回的 JSON 数据
+    data = {
+            "object": "list",
+            "data": [
+            {
+                "id": model_dir,
+                "object": "model",
+                "created": 15078046293,
+                "owned_by": "陈聚钧"
+            },
+        ]
+    }
+    # 返回 JSON 格式的响应
+    return JSONResponse(data)
+
 
 if __name__ == '__main__':
     uvicorn.run(app,host=None,port=8000,log_level="debug")
