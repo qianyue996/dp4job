@@ -5,6 +5,7 @@ from vllm.sampling_params import SamplingParams
 from modelscope import AutoTokenizer, GenerationConfig
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse, StreamingResponse
+from sse_starlette import EventSourceResponse
 import uvicorn
 import uuid
 from prompt_utils import _build_prompt
@@ -19,17 +20,16 @@ gpu_memory_utilization=0.6
 quantization='gptq'
 dtype='float16'
 max_model_len=6144
-
 # vLLM模型加载
 def load_vllm():
-    global generation_config,tokenizer,stop_words_ids,engine
+    global generation_config,tokenizer,stop_tokens_ids,engine
     # 模型基础配置
     generation_config=GenerationConfig.from_pretrained(model_dir,trust_remote_code=True)
     # 加载分词器
     tokenizer=AutoTokenizer.from_pretrained(model_dir,trust_remote_code=True)
     tokenizer.eos_token_id=generation_config.eos_token_id
     # 推理终止词
-    stop_words_ids=[tokenizer.im_start_id,tokenizer.im_end_id,tokenizer.eos_token_id]
+    stop_tokens_ids=[tokenizer.im_start_id,tokenizer.im_end_id,tokenizer.eos_token_id]
     # vLLM基础配置
     args=AsyncEngineArgs(model_dir)
     args.tokenizer=model_dir
@@ -43,9 +43,9 @@ def load_vllm():
     # 加载模型
     os.environ['VLLM_USE_MODELSCOPE']='True'
     engine=AsyncLLMEngine.from_engine_args(args)
-    return generation_config,tokenizer,stop_words_ids,engine
+    return generation_config,tokenizer,stop_tokens_ids,engine
 
-generation_config,tokenizer,stop_words_ids,engine=load_vllm()
+generation_config,tokenizer,stop_tokens_ids,engine=load_vllm()
 
 @app.post("/v1/chat/completions")
 async def chat(request: Request):
@@ -77,12 +77,11 @@ async def chat(request: Request):
 
     # 构造prompt
     prompt_text, prompt_tokens = _build_prompt(generation_config, tokenizer, latest_user_message, history=history, system=system)
-    inputs = {"prompt_token_ids": prompt_tokens}
+    prompt = {"prompt_token_ids": prompt_tokens}
 
     # vLLM请求配置
     sampling_params = SamplingParams(
-        stop_token_ids=stop_words_ids,
-        early_stopping=False,
+        stop_token_ids=stop_tokens_ids,
         top_p=generation_config.top_p,
         top_k=-1 if generation_config.top_k == 0 else generation_config.top_k,
         temperature=generation_config.temperature,
@@ -91,27 +90,24 @@ async def chat(request: Request):
     )
 
     # 获取生成器
-    results_generator = engine.generate(inputs=inputs, sampling_params=sampling_params, request_id=request_id)
+    results_generator = engine.generate(prompt=prompt, sampling_params=sampling_params, request_id=request_id)
 
     # 流式响应
-    if stream:
-        async def stream_results():
+    async def stream_results():
+        try:
             async for request_output in results_generator:
                 text_outputs = request_output.outputs[0].text
-                ret = {
-                        "model": model_dir,
-                        "choices": [
-                            {
-                                "message": {
-                                "role": "assistant",
-                                "content": text_outputs
-                                }
-                            }
-                        ]
-                    }
+                ret = { "model": model_dir,
+                        "choices": [{
+                        "message": {
+                        "role": "assistant",
+                        "content": text_outputs}}]}
                 yield json.dumps(ret)
-        return StreamingResponse(stream_results(),media_type="text/even-stream")
-    
+        finally:
+            yield json.dumps({'data': '[DONE]'})
+    if stream:
+        return StreamingResponse(stream_results(), media_type="text/event-stream")
+
 
     # 非流式响应
     final_output = None
