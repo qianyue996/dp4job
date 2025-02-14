@@ -1,45 +1,126 @@
-from fastapi import FastAPI
-from sse_starlette import EventSourceResponse
-import asyncio
+import os 
 import json
+from sse_starlette import EventSourceResponse
+from vllm import AsyncEngineArgs,AsyncLLMEngine
+from vllm.sampling_params import SamplingParams
+from modelscope import AutoTokenizer, GenerationConfig
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse, StreamingResponse
+import uvicorn
+import uuid
+from prompt_utils import _build_prompt
 
-app = FastAPI()
+# vLLM参数
+model_dir="remote_models/Qwen-1_8B-Chat"
+tensor_parallel_size=1
+gpu_memory_utilization=0.6
+quantization='gptq'
+dtype='float16'
+max_model_len=6144
+# vLLM模型加载
+def load_vllm():
+    global generation_config,tokenizer,stop_tokens_ids,engine
+    # 模型基础配置
+    generation_config=GenerationConfig.from_pretrained(model_dir,trust_remote_code=True)
+    # 加载分词器
+    tokenizer=AutoTokenizer.from_pretrained(model_dir,trust_remote_code=True)
+    tokenizer.eos_token_id=generation_config.eos_token_id
+    # 推理终止词
+    stop_tokens_ids=[tokenizer.im_start_id,tokenizer.im_end_id,tokenizer.eos_token_id]
+    # vLLM基础配置
+    args=AsyncEngineArgs(model_dir)
+    args.tokenizer=model_dir
+    args.tensor_parallel_size=tensor_parallel_size
+    args.trust_remote_code=True
+    #args.quantization=quantization
+    args.gpu_memory_utilization=gpu_memory_utilization
+    args.dtype=dtype
+    args.max_num_seqs=20   # batch最大20条样本
+    #args.max_model_len=max_model_len
+    # 加载模型
+    os.environ['VLLM_USE_MODELSCOPE']='True'
+    engine=AsyncLLMEngine.from_engine_args(args)
+    return generation_config,tokenizer,stop_tokens_ids,engine
 
-# 模拟增量生成多个部分（tokens）
-async def results_generator():
-    for i in range(5):  # 假设生成 5 个增量数据（每个为一个 JSON 对象）
-        await asyncio.sleep(1)  # 模拟处理延迟
-        choice = {
-            "id": f"chatcmpl-{i}",
-            "object": "chat.completion.chunk",
-            "created": 1677858241 + i,  # 假设每次返回的时间戳递增
-            "model": "gpt-3.5-turbo",
-            "choices": [
-                {
-                    "delta": {
-                        "role": "assistant",
-                        "content": f"Generated content part {i + 1}"  # 模拟每个 token 或消息片段
-                    },
-                    "index": 0
-                }
-            ]
-        }
-        yield choice  # 每次返回一个完整的 JSON 格式响应字符串
+generation_config,tokenizer,stop_tokens_ids,engine=load_vllm()
 
-    # 完成后，发送 "DONE" 消息以标志流的结束
-    yield {'data': '[DONE]'}
-
+# http接口服务
+app=FastAPI()
 @app.post("/v1/chat/completions")
-async def stream_response(stream: bool = True):
-    async def event_generator():
-        async for message in results_generator():
-            # 每次返回一个完整的 JSON 对象作为一个增量数据块
-            yield json.dumps(message)
-    
-    # 使用 EventSourceResponse 返回逐个生成的 JSON 格式字节流
-    return EventSourceResponse(event_generator(), media_type="text/event-stream")
+async def chat(request: Request):
+    request_data = await request.json()
+    stream = request_data.get("stream", False)
+    messages = request_data.get("messages", None)
+    # user发言字典列表
+    """
+    [
+    {"role": "user", "content": "What is the capital of France?"},
+    {"role": "user", "content": "What is the population of France?"}
+    ]
+    """
+    user_messages = [message for message in messages if message['role'] == 'user']
+    # assistant发言字典列表
+    """
+    [
+    {"role": "assistant", "content": "What is the capital of France?"},
+    {"role": "assistant", "content": "What is the population of France?"}
+    ]
+    """
+    assistant_messages = [message for message in messages if message['role'] == 'assistant']
+    # 取最新用户发言: Str
+    latest_user_message = user_messages[-1:][0]['content']
+    # 历史对话列表
+    history = messages[:-1]
+    system = "you are a helpful assistant" if messages[0]['role'] != "system" else ""
+    request_id = str(uuid.uuid4().hex)
 
-# 启动服务器
-if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000, log_level="debug")
+    # 构造prompt
+    prompt_text, prompt_tokens = _build_prompt(generation_config, tokenizer, latest_user_message, history=history, system=system)
+    prompt = {"prompt_token_ids": prompt_tokens}
+
+    # vLLM请求配置
+    sampling_params = SamplingParams(
+        stop_token_ids=stop_tokens_ids,
+        top_p=generation_config.top_p,
+        top_k=-1 if generation_config.top_k == 0 else generation_config.top_k,
+        temperature=generation_config.temperature,
+        repetition_penalty=generation_config.repetition_penalty,
+        max_tokens=generation_config.max_new_tokens
+    )
+
+    # 获取生成器
+    results_generator = engine.generate(prompt=prompt, sampling_params=sampling_params, request_id=request_id)
+
+    # 流式响应
+    async def stream_results():
+        async for request_output in results_generator:
+            text_outputs = request_output.outputs[0].text
+            ret = { "model": model_dir,
+                    "choices": [{
+                    "message": {
+                    "role": "assistant",
+                    "content": text_outputs}}]}
+            yield json.dumps(ret, ensure_ascii=False)
+    if stream:
+        return EventSourceResponse(stream_results())
+
+    # 非流式响应
+    final_output = None
+    async for request_output in results_generator:
+        final_output = request_output
+    text_outputs = final_output.outputs[0].text
+    response = {
+        "model": model_dir,
+        "choices": [
+            {
+                "message": {
+                    "role": "assistant",
+                    "content": text_outputs
+                }
+            }
+        ]
+    }
+    return JSONResponse(response)
+
+if __name__ == '__main__':
+    uvicorn.run(app,host=None,port=8000,log_level="debug")

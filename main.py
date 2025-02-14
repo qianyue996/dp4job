@@ -2,16 +2,14 @@ from fastapi import FastAPI
 from fastapi.responses import StreamingResponse
 import json
 import asyncio
-import uvicorn
+from sse_starlette import EventSourceResponse
 
 app = FastAPI()
-
 # 模拟一个生成器
 async def results_generator():
     for i in range(5):
-        await asyncio.sleep(1)  # 模拟等待时间
+        await asyncio.sleep(0.1)  # 模拟等待时间
         yield {"outputs": [{"text": f"Generated part {i + 1}."}]}  # 模拟文本输出
-
 @app.post("/v1/chat/completions")
 async def stream_response(stream: bool = True):
     if stream:
@@ -30,6 +28,6 @@ async def stream_response(stream: bool = True):
                     ]
                 }
                 # 逐步返回 JSON 格式的数据
-                yield json.dumps(ret) + "\n"  # 每次输出一个完整的 JSON 对象并加上换行符
+                yield json.dumps(ret)  # 每次输出一个完整的 JSON 对象并加上换行符
 
-        return StreamingResponse(stream_results(), media_type="text/event-stream")
+        return EventSourceResponse(stream_results())

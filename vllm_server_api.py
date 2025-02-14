@@ -94,20 +94,16 @@ async def chat(request: Request):
 
     # 流式响应
     async def stream_results():
-        try:
-            async for request_output in results_generator:
-                text_outputs = request_output.outputs[0].text
-                ret = { "model": model_dir,
-                        "choices": [{
-                        "message": {
-                        "role": "assistant",
-                        "content": text_outputs}}]}
-                yield json.dumps(ret)
-        finally:
-            yield json.dumps({'data': '[DONE]'})
+        async for request_output in results_generator:
+            text_outputs = request_output.outputs[0].text
+            ret = { "model": model_dir,
+                    "choices": [{
+                    "message": {
+                    "role": "assistant",
+                    "content": text_outputs}}]}
+            yield json.dumps(ret, ensure_ascii=False)
     if stream:
-        return StreamingResponse(stream_results(), media_type="text/event-stream")
-
+        return EventSourceResponse(stream_results())
 
     # 非流式响应
     final_output = None

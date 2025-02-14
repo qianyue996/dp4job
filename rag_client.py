@@ -1,19 +1,11 @@
-from langchain_community.embeddings import ModelScopeEmbeddings
-from langchain_community.vectorstores import FAISS
 from langchain.memory import ChatMessageHistory
 from langchain.prompts.chat import ChatPromptTemplate,SystemMessagePromptTemplate,HumanMessagePromptTemplate,AIMessagePromptTemplate,MessagesPlaceholder
 from langchain.schema import HumanMessage,SystemMessage,AIMessage
 from langchain_openai import ChatOpenAI
-from langchain_core.runnables import RunnablePassthrough
 from operator import itemgetter
-import requests
 from langchain.prompts import PromptTemplate
-from langchain.chains import RetrievalQA
-from langchain.vectorstores import Chroma
+from langchain_chroma import Chroma
 from langchain.embeddings.huggingface import HuggingFaceEmbeddings
-import json
-from langchain.llms.base import LLM
-from langchain.agents import Tool
 
 import os 
 
@@ -33,7 +25,8 @@ retriever=vectordb.as_retriever()
 chat=ChatOpenAI(
     model="",
     openai_api_key="EMPTY",
-    openai_api_base='http://localhost:8000/v1'
+    openai_api_base='http://localhost:8000/v1',
+    stream_options={"include_usage": True}
 )
 
 # Prompt模板
@@ -56,8 +49,10 @@ chain = (
     | full_chat_prompt
     | chat
 )
-query="你好，我想在广州找工作，你能推荐一下吗？广州"
-response=chain.invoke({'query':query, 'chat_history':chat_history})
-chat_history.extend((HumanMessage(content=query),response))
-print(response.content)
-chat_history=chat_history[-20:] # 最新10轮对话
+
+while True:
+    query=input('问题：')
+    response=chain.invoke({'query':query, 'chat_history':chat_history})
+    chat_history.extend((HumanMessage(content=query),response))
+    print(response.content)
+    chat_history=chat_history[-20:] # 最新10轮对话
