@@ -1,2 +1,4 @@
 /remote_models/
 /vllm/
+/.vscode/
+/__pycache__/
