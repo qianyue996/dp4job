@@ -2,3 +2,4 @@
 /vllm/
 /.vscode/
 /__pycache__/
+/models/
