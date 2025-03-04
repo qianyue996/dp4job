@@ -11,6 +11,7 @@ check_git_lfs_installed() {
 }
 
 if check_git_lfs_installed; then
+    echo " "
 else
     exit 1
 fi

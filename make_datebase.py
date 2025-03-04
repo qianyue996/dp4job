@@ -1,6 +1,6 @@
-# 首先导入所需第三方库
 from langchain_community.document_loaders import CSVLoader
-from langchain.text_splitter import RecursiveCharacterTextSplitter
+import pandas as pd
+from langchain.schema import Document
 from langchain_community.vectorstores import Chroma
 from langchain_huggingface import HuggingFaceEmbeddings
 from tqdm import tqdm
@@ -19,6 +19,8 @@ def get_files(dir_path):
                 file_list.append(os.path.join(filepath, filename))
             elif filename.endswith(".txt"):
                 file_list.append(os.path.join(filepath, filename))
+            elif filename.endswith(".csv"):
+                file_list.append(os.path.join(filepath, filename))
     return file_list
 
 # 加载文件函数
@@ -26,58 +28,54 @@ def get_text(dir_path):
     # args：dir_path，目标文件夹路径
     # 首先调用上文定义的函数得到目标文件路径列表
     file_lst = get_files(dir_path)
-    # docs 存放加载之后的纯文本对象
+    # docs 存放加载之后的document对象
     docs = []
     # 遍历所有目标文件
     for one_file in tqdm(file_lst):
         file_type = one_file.split('.')[-1]
-        if file_type == 'md':
-            loader = UnstructuredMarkdownLoader(one_file)
-        elif file_type == 'txt':
-            loader = UnstructuredFileLoader(one_file)
+        if file_type == 'csv':
+            # 分批大小
+            batch_size = 1000
+            # 使用 Pandas 读取 CSV 文件并分批处理
+            chunk_iterable = pd.read_csv(one_file, encoding="utf-8", chunksize=batch_size)
+            for i, chunk_df in enumerate(chunk_iterable):
+                for index, row in chunk_df.iterrows():
+                    content = "\n".join([f"{col}: {val}" for col, val in zip(chunk_df.columns, row)])
+                    metadata = {"row_number": index}
+                    document = Document(page_content=content, metadata=metadata)
+                    docs.append(document)
         else:
             # 如果是不符合条件的文件，直接跳过
             continue
-        docs.extend(loader.load())
     return docs
 
 if __name__ == '__main__':
-    # # 目标文件夹
-    # tar_dir = [
-    #     "raw_data"
-    # ]
+    # 目标文件夹
+    tar_dir = [
+        "raw_data"
+    ]
 
-    # # 加载目标文件
-    # docs = []
-    # for dir_path in tar_dir:
-    #     docs.extend(get_text(dir_path))
+    # 加载目标文件
+    docs = []
+    for dir_path in tar_dir:
+        docs.extend(get_text(dir_path))
 
     # # 对文本进行分块
     # text_splitter = RecursiveCharacterTextSplitter(
     #     chunk_size=500, chunk_overlap=150)
     # split_docs = text_splitter.split_documents(docs)
 
-    # # 加载开源词向量模型
+    # 加载开源词向量模型
     embeddings = HuggingFaceEmbeddings(model_name="models/embedding_model")
 
-    # # 构建向量数据库
-    # # 定义持久化路径
-    # persist_directory = 'data_base/vector_db/chroma'
-    # # 加载数据库
-    # vectordb = Chroma.from_documents(
-    #     documents=split_docs,
-    #     embedding=embeddings,
-    #     persist_directory=persist_directory  # 允许我们将persist_directory目录保存到磁盘上
-    # )
-    # # 将加载的向量数据库持久化到磁盘上
-    # vectordb.persist()
-    loader = CSVLoader(file_path='raw_data/zhaopin.csv', encoding="utf-8")
-    data = loader.load()
-
+    # 构建向量数据库
+    # 定义持久化路径
+    persist_directory = 'data_base/vector_db/chroma'
+    # 加载数据库
     vectordb = Chroma.from_documents(
-        documents=data,
+        documents=docs,
         embedding=embeddings,
-        persist_directory='test'  # 允许我们将persist_directory目录保存到磁盘上
+        persist_directory=persist_directory  # 允许我们将persist_directory目录保存到磁盘上
     )
-
+    # 将加载的向量数据库持久化到磁盘上
     vectordb.persist()
