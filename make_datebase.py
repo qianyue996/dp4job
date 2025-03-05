@@ -77,5 +77,3 @@ if __name__ == '__main__':
         embedding=embeddings,
         persist_directory=persist_directory  # 允许我们将persist_directory目录保存到磁盘上
     )
-    # 将加载的向量数据库持久化到磁盘上
-    vectordb.persist()

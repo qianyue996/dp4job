@@ -1,16 +1,16 @@
-from langchain.memory import ChatMessageHistory
+from langchain_community.chat_message_histories import ChatMessageHistory
 from langchain.prompts.chat import ChatPromptTemplate,SystemMessagePromptTemplate,HumanMessagePromptTemplate,AIMessagePromptTemplate,MessagesPlaceholder
 from langchain.schema import HumanMessage,SystemMessage,AIMessage
 from langchain_openai import ChatOpenAI
 from operator import itemgetter
 from langchain.prompts import PromptTemplate
 from langchain_chroma import Chroma
-from langchain.embeddings.huggingface import HuggingFaceEmbeddings
+from langchain_huggingface import HuggingFaceEmbeddings
 
 import os 
 
 # 定义 Embeddings
-embeddings = HuggingFaceEmbeddings(model_name="remote_models/embedding_model")
+embeddings = HuggingFaceEmbeddings(model_name="models/embedding_model")
 
 # 向量数据库持久化路径
 persist_directory = 'data_base/vector_db/chroma'
@@ -31,7 +31,8 @@ chat=ChatOpenAI(
 
 # Prompt模板
 system_prompt=SystemMessagePromptTemplate.from_template('You are a helpful assistant.')
-user_prompt=HumanMessagePromptTemplate.from_template("""你是问答任务助手。使用以下检索到的上下文片段来回答问题。如果你不知道答案，就说你不知道。
+user_prompt=HumanMessagePromptTemplate.from_template("""
+你是帮助用户找工作的助手，当用户咨询你工作相关信息的时候，使用以下检索到的上下文片段来回答问题。如果你不知道答案，就说你不知道。否则你就是一名聊天助手。
 Question: {query} 
 Context: {context} 
 Answer:

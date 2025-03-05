@@ -14,9 +14,9 @@ from prompt_utils import _build_prompt
 app=FastAPI()
 
 # vLLM参数
-model_dir="remote_models/Qwen-1_8B-Chat"
+model_dir="models/Qwen-7B-Chat-Int4"
 tensor_parallel_size=1
-gpu_memory_utilization=0.6
+gpu_memory_utilization=0.8
 quantization='gptq'
 dtype='float16'
 max_model_len=6144
@@ -39,7 +39,7 @@ def load_vllm():
     args.gpu_memory_utilization=gpu_memory_utilization
     args.dtype=dtype
     args.max_num_seqs=20   # batch最大20条样本
-    #args.max_model_len=max_model_len
+    args.max_model_len=max_model_len
     # 加载模型
     os.environ['VLLM_USE_MODELSCOPE']='True'
     engine=AsyncLLMEngine.from_engine_args(args)
