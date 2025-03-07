@@ -52,6 +52,13 @@ async def chat(request: Request):
     request_data = await request.json()
     stream = request_data.get("stream")
     messages = request_data.get("messages", None)
+
+    # bug 1 我的后端不支持处理gradio产生的messages格式，只允许messages列表中的字典存在两个键，role和content
+    for _dict in messages:
+        if 'metadata' in _dict.keys():
+            del _dict['metadata']
+        if 'options' in _dict.keys():
+            del _dict['options']
     # user发言字典列表
     """
     [
@@ -68,11 +75,16 @@ async def chat(request: Request):
     ]
     """
     assistant_messages = [message for message in messages if message['role'] == 'assistant']
+    # system类型列表集合
+    system_messages = [message for message in messages if message['role'] == 'system']
     # 取最新用户发言: Str
     latest_user_message = user_messages[-1:][0]['content']
     # 历史对话列表
     history = messages[:-1]
-    system = "you are a helpful assistant" if messages[0]['role'] != "system" else ""
+    if messages[0]['role'] != "system":
+        system = "you are a helpful assistant"
+    else:
+        system = system_messages[-1:][0]['content']
     request_id = str(uuid.uuid4().hex)
 
     # 构造prompt
