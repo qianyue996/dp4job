@@ -1,16 +1,32 @@
 import gradio as gr
 import json
 import requests
-from openai import OpenAI
+from langchain_openai import ChatOpenAI
+# from rag_client import RAG_SEARCH
 
 # 初始化客户端（推荐从环境变量读取API密钥）
 url = "http://127.0.0.1:8000/v1/chat/completions"
 
-model = "gpt-3.5-turbo"
+model = "Qwen-7B-Chat-Int4"
 
 MAX_HISTORY_LEN=50
 
+chat = ChatOpenAI(
+        model=model,
+        openai_api_key="EMPTY",
+        openai_api_base='http://127.0.0.1:8000/v1',
+        # stop=['<|im_end|>'],
+        streaming=True
+    )
+
 def chat_streaming(messages: list):
+    # bug1 我的后端不支持处理gradio产生的messages格式，只允许messages列表中的字典存在两个键，role和content，额外的'metadata'和'options'会不被解析导致报错
+    for _dict in messages:
+        if 'metadata' in _dict.keys():
+            del _dict['metadata']
+        if 'options' in _dict.keys():
+            del _dict['options']
+
     try:
         response = requests.post(
             url=url,

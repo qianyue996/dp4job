@@ -4,11 +4,11 @@ from vllm import AsyncEngineArgs,AsyncLLMEngine
 from vllm.sampling_params import SamplingParams
 from modelscope import AutoTokenizer, GenerationConfig
 from fastapi import FastAPI, Request
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import JSONResponse
 from sse_starlette import EventSourceResponse
 import uvicorn
 import uuid
-from prompt_utils import _build_prompt
+from utils.prompt_utils import _build_prompt
 
 # http接口服务
 app=FastAPI()
@@ -16,7 +16,7 @@ app=FastAPI()
 # vLLM参数
 model_dir="models/Qwen-7B-Chat-Int4"
 tensor_parallel_size=1
-gpu_memory_utilization=0.8
+gpu_memory_utilization=0.85
 quantization='gptq'
 dtype='float16'
 max_model_len=6144
@@ -52,13 +52,6 @@ async def chat(request: Request):
     request_data = await request.json()
     stream = request_data.get("stream")
     messages = request_data.get("messages", None)
-
-    # bug 1 我的后端不支持处理gradio产生的messages格式，只允许messages列表中的字典存在两个键，role和content
-    for _dict in messages:
-        if 'metadata' in _dict.keys():
-            del _dict['metadata']
-        if 'options' in _dict.keys():
-            del _dict['options']
     # user发言字典列表
     """
     [
