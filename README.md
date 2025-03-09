@@ -9,3 +9,7 @@
 
 运行`vllm_webui.py`启动前端，监听`0.0.0.0:7860`
 
+
+参考自以下项目，在此感谢。
+[owenliang/rag-retrieval](https://github.com/owenliang/rag-retrieval)
+[owenliang/qwen-vllm](https://github.com/owenliang/qwen-vllm)
