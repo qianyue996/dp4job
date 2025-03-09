@@ -1,5 +1,6 @@
 from datasets import load_dataset
 import json
+import random
 
 format_train_data = []
 
@@ -33,8 +34,12 @@ def main(hf_datasets_path, custom_datasets_path):
     _datasets = load_dataset(hf_datasets_path)
     # 过滤出只属于advice-seeking类型的数据集
     filter_datasets = _datasets['train'].filter(lambda x: x['system_prompt_key'] == 'advice-seeking')
+    list_filter_datasets = [i for i in filter_datasets]
 
-    for dataset in filter_datasets:
+    # 数据集太长，训练简直要命，故取随机元素集合
+    list_filter_datasets = random.sample(list_filter_datasets, 2000)
+
+    for dataset in list_filter_datasets:
         # 分离user和assistant的对话
         user_messages = [message for message in dataset['conversations'] if message['role'] == 'user']
         assistant_messages = [message for message in dataset['conversations'] if message['role'] == 'assistant']
