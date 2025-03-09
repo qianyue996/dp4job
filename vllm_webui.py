@@ -50,34 +50,47 @@ def chat_streaming(messages: list):
                 print("解析数据错误：", e)
                 continue
 
-def chat(user_prompt: str, chat_history: list):
+def chat(user_prompt: str, chat_history: list, model='chat'):
     print(chat_history)
     # 给模型指定角色类型
-    chat_history.append({'role': 'system', 'content': '你是一个高级人力资源助手，帮助用户匹配能力相当的工作岗位，你的主要语言是中文'})
+    if chat_history == []:
+        chat_history.append({'role': 'system', 'content': '你是一个高级人力资源助手，帮助用户匹配能力相当的工作岗位，你的主要语言是中文'})
 
     # 用户问题
     chat_history.append({'role': 'user', 'content': user_prompt})
     
-    # 流式更新助手回复，并实时更新 chat_history
-    chunk = ''
-    for chunk in chat_streaming(list(chat_history)):
+    if model=='chat_rag':
+        # 流式更新助手回复，并实时更新 chat_history
+        for chunk in chat_streaming(list(chat_history)):
         # yield 返回时，清空输入框，并传递更新后的消息列表
-        yield "", chat_history + [{'role': 'assistant', 'content': chunk}]
+            yield "", chat_history + [{'role': 'assistant', 'content': chunk}]
+    else:
+        # 流式更新助手回复，并实时更新 chat_history
+        for chunk in chat_streaming(list(chat_history)):
+            # yield 返回时，清空输入框，并传递更新后的消息列表
+            yield "", chat_history + [{'role': 'assistant', 'content': chunk}]
     chat_history.append({'role': 'assistant', 'content': chunk})
     while len(chat_history)>MAX_HISTORY_LEN:
         chat_history.pop(0)
 
 # 主程序
 with gr.Blocks() as app:
-    gr.Markdown("""<h1><center>Chatbot Demo</center></h1>""")
-    chatbot = gr.Chatbot(type="messages")
-    msg = gr.Textbox()
-    submit = gr.Button("SEND")
-    clear = gr.ClearButton([msg, chatbot])
+    with gr.Row():
+        gr.Markdown("""<h1><center>基于深度学习的就业指导系统模型</center></h1>""")
+    with gr.Row():
+        chatbot = gr.Chatbot(type="messages", label='聊天区')
+    with gr.Row():
+        msg = gr.Textbox(label='输入框')
+    with gr.Row():
+        submit = gr.Button("普通发送(默认)")
+        clear = gr.ClearButton([msg, chatbot])
+        switch_rag = gr.Button('RAG模式发送')
 
     submit.click(chat, [msg, chatbot], [msg, chatbot])
     msg.submit(chat, [msg, chatbot], [msg, chatbot])
 
+    switch_rag.click(chat, [msg, chatbot], [msg, chatbot])
+
 if __name__ == "__main__":
     app.queue(200)  # 请求队列
-    app.launch(server_name="127.0.0.1", max_threads=500) # 线程池
+    app.launch(server_name="0.0.0.0", server_port=7860, max_threads=500) # 线程池

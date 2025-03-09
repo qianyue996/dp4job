@@ -52,24 +52,31 @@ async def chat(request: Request):
     request_data = await request.json()
     stream = request_data.get("stream")
     messages = request_data.get("messages", None)
+    
     # user发言字典列表
+    user_messages = [message for message in messages if message['role'] == 'user']
     """
     [
     {"role": "user", "content": "What is the capital of France?"},
     {"role": "user", "content": "What is the population of France?"}
     ]
     """
-    user_messages = [message for message in messages if message['role'] == 'user']
     # assistant发言字典列表
+    assistant_messages = [message for message in messages if message['role'] == 'assistant']
     """
     [
     {"role": "assistant", "content": "What is the capital of France?"},
     {"role": "assistant", "content": "What is the population of France?"}
     ]
     """
-    assistant_messages = [message for message in messages if message['role'] == 'assistant']
-    # system类型列表集合
+    # system类型列表
     system_messages = [message for message in messages if message['role'] == 'system']
+    """
+    [
+    {"role": "system", "content": "What is the capital of France?"},
+    {"role": "system", "content": "What is the population of France?"}
+    ]
+    """
     # 取最新用户发言: Str
     latest_user_message = user_messages[-1:][0]['content']
     # 历史对话列表
@@ -162,7 +169,6 @@ async def get_json():
     }
     # 返回 JSON 格式的响应
     return JSONResponse(data)
-
 
 if __name__ == '__main__':
     uvicorn.run(app,host=None,port=8000,log_level="debug")

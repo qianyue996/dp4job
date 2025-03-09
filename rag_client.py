@@ -33,44 +33,33 @@ class RAG_SEARCH():
 
         # Prompt模板
         system_prompt=SystemMessagePromptTemplate.from_template('You are a helpful assistant.')
-        user_prompt=HumanMessagePromptTemplate.from_template("""
-        你是帮助用户找工作的助手，当用户咨询你工作相关信息的时候，使用以下检索到的上下文片段来回答问题。如果你不知道答案，就说你不知道。否则你就是一名聊天助手。
+        user_prompt=HumanMessagePromptTemplate.from_template(
+        """
+        你是帮助用户找工作的助手，当用户咨询你工作相关信息的时候，使用以下检索到的上下文片段来回答问题。如果你不知道答案，就说你不知道。
         Question: {query} 
         Context: {context} 
         Answer:
-        """)
+        """
+        )
 
         self.full_chat_prompt=ChatPromptTemplate.from_messages([system_prompt,MessagesPlaceholder(variable_name="chat_history"),user_prompt])
 
-    def rag_search(self, chat_history: list):
-        chat_history=[]
+    def rag_search(self, query):
         # 构建 RAG 链
         chain = (
             {
                 "context": itemgetter("query") | self.retriever,
-                "query": itemgetter("query"),
-                "chat_history": itemgetter("chat_history")
+                "query": itemgetter("query")
             }
             | self.full_chat_prompt
             | self.chat
         )
+        yield chain.invoke({'query':query}).content
 
 
+    def do_it(self, messages: list):
+        user_messages = [message for message in messages if message['role'] == 'user']
+        # 取最新用户发言: Str
+        latest_user_message = user_messages[-1:][0]['content']
 
-
-
-
-
-
-
-
-
-
-
-
-while True:
-    query=input('问题：')
-    response=chain.invoke({'query':query, 'chat_history':chat_history})
-    chat_history.extend((HumanMessage(content=query),response))
-    print(response.content)
-    chat_history=chat_history[-20:] # 最新10轮对话
+        yield self.rag_search(latest_user_message)

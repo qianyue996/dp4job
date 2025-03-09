@@ -5,18 +5,24 @@
 量化微调后模型
 这一小节用于量化全参/LoRA微调后的模型。（注意：你不需要量化Q-LoRA模型因为它本身就是量化过的。） 如果你需要量化LoRA微调后的模型，请先根据上方说明去合并你的模型权重。
 
-我们推荐使用auto_gptq去量化你的模型。
+GPTQ
+我们提供了基于AutoGPTQ的量化方案，并开源了Int4和Int8量化模型。量化模型的效果损失很小，但能显著降低显存占用并提升推理速度。
+
+以下我们提供示例说明如何使用Int4量化模型。在开始使用前，请先保证满足要求（如torch 2.0及以上，transformers版本为4.32.0及以上，等等），并安装所需安装包：
 
 pip install auto-gptq optimum
-注意: 当前AutoGPTQ有个bug，可以在该issue查看。这里有个修改PR，你可以使用该分支从代码进行安装。
+如安装auto-gptq遇到问题，我们建议您到官方repo搜索合适的wheel。
 
-首先，准备校准集。你可以重用微调你的数据，或者按照微调相同的方式准备其他数据。
+注意：预编译的auto-gptq版本对torch版本及其CUDA版本要求严格。同时，由于 其近期更新，你可能会遇到transformers、optimum或peft抛出的版本错误。 我们建议使用符合以下要求的最新版本：
 
-第二步，运行以下命令：
+torch==2.1 auto-gptq>=0.5.1 transformers>=4.35.0 optimum>=1.14.0 peft>=0.6.1
+torch>=2.0,<2.1 auto-gptq<0.5.0 transformers<4.35.0 optimum<1.14.0 peft>=0.5.0,<0.6.0
+随后即可使用和上述一致的用法调用量化模型：
 
-python run_gptq.py \
-    --model_name_or_path $YOUR_LORA_MODEL_PATH \
-    --data_path $DATA \
-    --out_path $OUTPUT_PATH \
-    --bits 4 # 4 for int4; 8 for int8
-这一步需要使用GPU，根据你的校准集大小和模型大小，可能会消耗数个小时。
+# 可选模型包括："Qwen/Qwen-7B-Chat-Int4", "Qwen/Qwen-14B-Chat-Int4"
+model = AutoModelForCausalLM.from_pretrained(
+    "Qwen/Qwen-7B-Chat-Int4",
+    device_map="auto",
+    trust_remote_code=True
+).eval()
+response, history = model.chat(tokenizer, "Hi", history=None)
