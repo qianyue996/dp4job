@@ -9,6 +9,16 @@
 
 运行`vllm_webui.py`启动前端，监听`0.0.0.0:7860`
 
+### 复现过程
+python版本：3.10.14
+Pytorch版本: 2.1.0 cu118
+依赖项:
+```
+vllm==0.7.0
+auto-gptq==0.5.1    #pip install auto-gptq==0.5.1 --extra-index-url https://huggingface.github.io/autogptq-index/whl/cu118/
+
+```
+
 
 参考自以下项目，在此感谢。
 <br>
