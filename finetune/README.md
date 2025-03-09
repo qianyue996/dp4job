@@ -1,3 +1,7 @@
+### Auto-GPTQ
+在使用GPTQ量化时，它的校验数据集一定不能太大，随便一点就行了，否则爆内存。
+
+
 `pip install "peft<0.8.0" deepspeed`
 
 合并并存储模型需要非量化的原模型，并修改lora模型的adapter.config里面的模型路径，指向非量化模型
