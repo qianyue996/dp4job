@@ -162,8 +162,8 @@ async def get_json():
             {
                 "id": model_dir,
                 "object": "model",
-                "created": 15078046293,
-                "owned_by": "陈聚钧"
+                "created": 2333333,
+                "owned_by": "淺月"
             },
         ]
     }
