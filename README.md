@@ -21,7 +21,12 @@ auto-gptq==0.5.1    #pip install auto-gptq==0.5.1 --extra-index-url https://hugg
 
 ```
 
+#### 遇到过的坑
 
+**量化报错**
+
+[[BUG\]RuntimeError: Expected all tensors to be on the same device, but found at least two devices, cuda:0 and cpu!](https://github.com/AutoGPTQ/AutoGPTQ/issues/370#top)
+<br>
 参考自以下项目，在此感谢。
 <br>
 [QwenLM/Qwen](https://github.com/QwenLM/Qwen)
