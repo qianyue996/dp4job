@@ -1,7 +1,7 @@
 /remote_models/
 /vllm/
 /.vscode/
-/__pycache__/
+*/__pycache__/
 /models/
 /data_base/
 
