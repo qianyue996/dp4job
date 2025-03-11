@@ -14,7 +14,7 @@ from utils.prompt_utils import _build_prompt
 app=FastAPI()
 
 # vLLM参数
-model_dir="models/Qwen-7B-Chat-Int4"
+model_dir="../my_model_int4"
 tensor_parallel_size=1
 gpu_memory_utilization=0.85
 quantization='gptq'

@@ -1,8 +1,7 @@
 import gradio as gr
 import json
 import requests
-from langchain_openai import ChatOpenAI
-# from rag_client import RAG_SEARCH
+from rag_client import RAG_SEARCH
 
 # 初始化客户端（推荐从环境变量读取API密钥）
 url = "http://127.0.0.1:8000/v1/chat/completions"
@@ -11,15 +10,9 @@ model = "Qwen-7B-Chat-Int4"
 
 MAX_HISTORY_LEN=50
 
-chat = ChatOpenAI(
-        model=model,
-        openai_api_key="EMPTY",
-        openai_api_base='http://127.0.0.1:8000/v1',
-        # stop=['<|im_end|>'],
-        streaming=True
-    )
+rag_search = RAG_SEARCH()
 
-def chat_streaming(messages: list):
+def model_chat(messages: list):
     # bug1 我的后端不支持处理gradio产生的messages格式，只允许messages列表中的字典存在两个键，role和content，额外的'metadata'和'options'会不被解析导致报错
     for _dict in messages:
         if 'metadata' in _dict.keys():
@@ -35,7 +28,6 @@ def chat_streaming(messages: list):
         )
     except Exception as e:
         yield f"请求错误：{e}"
-        return
 
     for chunk in response.iter_lines():
         if chunk:
@@ -50,23 +42,27 @@ def chat_streaming(messages: list):
                 print("解析数据错误：", e)
                 continue
 
-def chat(user_prompt: str, chat_history: list, model='chat'):
+def chat(user_prompt: str, chat_history: list, mode: bool):
     print(chat_history)
     # 给模型指定角色类型
     if chat_history == []:
-        chat_history.append({'role': 'system', 'content': '你是一个高级人力资源助手，帮助用户匹配能力相当的工作岗位，你的主要语言是中文'})
-
-    # 用户问题
-    chat_history.append({'role': 'user', 'content': user_prompt})
+        chat_history.append({'role': 'system', 'content': '你是一个高级人力资源助手，帮助用户匹配能力相当的工作岗位。'})
     
-    if model=='chat_rag':
+    if mode:
+        # rag检索内容
+        rag_content = rag_search(user_prompt)
+        # 用户+RAG
+        chat_history.append({'role': 'user', 'content': user_prompt + '\n' + rag_content})
+        
         # 流式更新助手回复，并实时更新 chat_history
-        for chunk in chat_streaming(list(chat_history)):
+        for chunk in model_chat(list(chat_history)):
         # yield 返回时，清空输入框，并传递更新后的消息列表
             yield "", chat_history + [{'role': 'assistant', 'content': chunk}]
     else:
+        # 用户问题
+        chat_history.append({'role': 'user', 'content': user_prompt})
         # 流式更新助手回复，并实时更新 chat_history
-        for chunk in chat_streaming(list(chat_history)):
+        for chunk in model_chat(list(chat_history)):
             # yield 返回时，清空输入框，并传递更新后的消息列表
             yield "", chat_history + [{'role': 'assistant', 'content': chunk}]
     chat_history.append({'role': 'assistant', 'content': chunk})
@@ -82,14 +78,20 @@ with gr.Blocks() as app:
     with gr.Row():
         msg = gr.Textbox(label='输入框')
     with gr.Row():
-        submit = gr.Button("普通发送(默认)")
+        submit = gr.Button("发送")
+        switch_rag = gr.Checkbox(label="RAG模式", value=False)  # 开关
         clear = gr.ClearButton([msg, chatbot])
-        switch_rag = gr.Button('RAG模式发送')
 
-    submit.click(chat, [msg, chatbot], [msg, chatbot])
-    msg.submit(chat, [msg, chatbot], [msg, chatbot])
+    # 存储发送按钮状态，普通请求 or rag模式
+    rag_state = gr.State(False)
+    # 更新 state 状态
+    def update_state(state_value):
+        return state_value  # 返回新状态
+    # 当开关切换时，更新状态
+    switch_rag.change(update_state, inputs=switch_rag, outputs=rag_state)
 
-    switch_rag.click(chat, [msg, chatbot], [msg, chatbot])
+    submit.click(chat, [msg, chatbot, rag_state], [msg, chatbot])
+    msg.submit(chat, [msg, chatbot, rag_state], [msg, chatbot])
 
 if __name__ == "__main__":
     app.queue(200)  # 请求队列
