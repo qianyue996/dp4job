@@ -32,6 +32,7 @@ def load_vllm():
     stop_tokens_ids=[tokenizer.im_start_id,tokenizer.im_end_id,tokenizer.eos_token_id]
     # vLLM基础配置
     args=AsyncEngineArgs(model_dir)
+    args.device='cpu'
     args.tokenizer=model_dir
     args.tensor_parallel_size=tensor_parallel_size
     args.trust_remote_code=True
