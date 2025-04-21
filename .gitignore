@@ -1,0 +1,13 @@
+/.gradio/
+/.vscode/
+/__pycache__/
+*/__pycache__/
+/.git/
+
+/remote_models/
+/vllm/
+/models/
+/data_base/
+
+controller.log
+
