@@ -1,8 +1,13 @@
 /.gradio/
 /.vscode/
 /__pycache__/
-
 /remote_models/
 /vllm/
 /models/
 /data_base/
+models
+__pycache__
+
+.python-version
+.env
+builder.txt

@@ -1,4 +1,7 @@
 ### How to use
+```
+python -m vllm.entrypoints.openai.api_server --model '/mnt/nfs/ai_models/Qwen-7B-Chat-Int4' --trust-remote-code -q gptq --dtype float16 --gpu-memory-utilization 0.9 --chat-template 'template_chatml.jinja'
+```
 
 #### 制作向量数据库
 
